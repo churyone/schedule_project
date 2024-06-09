@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/5.3.0/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/5.3.0/js/bootstrap.bundle.min.js"></script>
+    <link href='https://cdn.jsdelivr.net/npm/fullcalendar@5.8.0/main.min.css' rel='stylesheet' />
+    <script src='https://cdn.jsdelivr.net/npm/fullcalendar@5.8.0/main.min.js'></script>
+    <script src='https://cdn.jsdelivr.net/npm/fullcalendar@5.8.0/locales-all.min.js'></script>
+    <script src="https://cdn.jsdelivr.net/npm/sockjs-client@1.5.0/dist/sockjs.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/stompjs@2.3.3/lib/stomp.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    <style>
+        html, body {
+            overflow: hidden;
+            font-family: Arial, Helvetica Neue, Helvetica, sans-serif;
+            font-size: 14px;
+            overflow-y: scroll;
+        }
+        .fc-header-toolbar {
+            padding-top: 1em;
+            padding-left: 1em;
+            padding-right: 1em;
+        }
+        #chat-container {
+            width: 100%;
+            background-color: #8FBC8F;
+            border: 1px solid #ccc;
+            padding: 10px;
+            margin-top: 10px;
+        }
+        #messages {
+            height: 150px;
+            overflow-y: auto;
+            border: 1px solid #ccc;
+            margin-bottom: 8px;
+        }
+        .client-message {
+            border: 2px solid #222222;
+            padding: 5px;
+            margin-bottom: 10px;
+            border-radius: 5px;
+        }
+        .server-message {
+            border: 2px solid #ffffff;
+            padding: 5px;
+            margin-bottom: 10px;
+            border-radius: 5px;
+        }
+        #calendar-container {
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body style="padding:30px;">
+<div id='calendar-container'>
+    <div id='calendar'></div>
+</div>
+<div id="chat-container">
+    <div id="messages"></div>
+    <input type="text" id="chat-message" placeholder="메시지 입력" />
+    <button onclick="sendMessage()">보내기</button>
+</div>
+<div class="modal fade" id="exampleModal" tabindex="-1" aria-labelledby="exampleModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="exampleModalLabel">일정 추가하기</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                일정이름 : <input type="text" id="title" /><br />
+                시작시간 : <input type="datetime-local" id="start" /><br />
+                종료시간 : <input type="datetime-local" id="end" /><br />
+                배경색상 :
+                <select id="color">
+                    <option value="red">빨강색</option>
+                    <option value="orange">주황색</option>
+                    <option value="yellow">노랑색</option>
+                    <option value="green">초록색</option>
+                    <option value="blue">파랑색</option>
+                    <option value="indigo">남색</option>
+                    <option value="purple">보라색</option>
+                </select>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">취소</button>
+                <button type="button" class="btn btn-primary" id="saveChanges">추가</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal for Connected Users -->
+<div class="modal fade" id="connectedUsersModal" tabindex="-1" aria-labelledby="connectedUsersModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="connectedUsersModalLabel">접속 친구</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <ul id="connectedUsersList" class="list-group">
+                    <!-- Connected users will be appended here -->
+                </ul>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">닫기</button>
+                <button type="button" class="btn btn-primary" id="refreshConnectedUsers">새로고침</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    let stompClient = null;
+    let calendar;
+    let calendarEl;
+    const username = localStorage.getItem('username') || 'Anonymous';
+
+    function connect() {
+        const socket = new SockJS('/chat-websocket');
+        stompClient = Stomp.over(socket);
+        stompClient.connect({}, function (frame) {
+            console.log('Connected: ' + frame);
+            stompClient.subscribe('/topic/messages', function (message) {
+                const msg = JSON.parse(message.body);
+                if (msg.sender !== username) {
+                    showMessage(msg.content, 'server-message');
+                }
+            });
+        });
+    }
+
+    function sendMessage() {
+        const messageInput = document.getElementById('chat-message');
+        const message = messageInput.value;
+        if (message) {
+            stompClient.send("/app/message", {}, JSON.stringify({ 'content': message, 'sender': username }));
+            showMessage(username + " : " + message, 'client-message');
+            messageInput.value = '';
+        }
+    }
+
+    function showMessage(message, messageClass) {
+        const messageElement = document.createElement('div');
+        messageElement.textContent = message;
+        messageElement.classList.add(messageClass);
+        document.getElementById('messages').appendChild(messageElement);
+        document.getElementById('messages').scrollTop = document.getElementById('messages').scrollHeight;
+    }
+
+    //접속해있는 친구 목록 불러오기
+    function fetchConnectedUsers() {
+        axios.get('/api/connected_users')
+            .then(response => {
+                const connectedUsersList = document.getElementById('connectedUsersList');
+                connectedUsersList.innerHTML = ''; // 기존 목록 비우기
+                response.data.forEach(user => {
+                    if (user !== username) { // 본인 제외
+                        const userItem = document.createElement('li');
+                        userItem.classList.add('list-group-item');
+                        userItem.textContent = user;
+                        userItem.addEventListener('click', function() {
+                            if (confirm(`${user}의 일정을 받아오시겠습니까?`)) {
+                                fetchFriendSchedule(user);
+                            }
+                        });
+                        connectedUsersList.appendChild(userItem);
+                    }
+                });
+            })
+            .catch(error => {
+                console.error('Error fetching connected users:', error);
+            });
+    }
+
+    // 친구의 일정을 불러오는 함수
+    function fetchFriendSchedule(friendUsername) {
+        axios.get(`/api/friend_schedule`, {
+            params: {
+                username: friendUsername
+            }
+        })
+            .then(response => {
+                const friendSchedules = response.data;
+                // friendUsername과 일치하는 일정만 제거
+                calendar.getEvents().forEach(event => {
+                    if (event.extendedProps.username === friendUsername) {
+                        event.remove(); // 친구 일정 제거
+                    }
+                });
+                friendSchedules.forEach(schedule => {
+                    calendar.addEvent({
+                        title: schedule.title,
+                        start: schedule.startTime,
+                        end: schedule.endTime,
+                        color: schedule.color,
+                        extendedProps: {
+                            username: friendUsername // 일정에 친구 이름 추가
+                        }
+                    });
+                });
+            })
+            .catch(error => {
+                console.error('Error fetching friend schedule:', error);
+            });
+    }
+
+    document.addEventListener('DOMContentLoaded', function () {
+        let username = localStorage.getItem('username') || 'Anonymous';
+
+        connect();
+
+        document.getElementById('chat-message').addEventListener('keypress', function (e) {
+            if (e.key === 'Enter') {
+                sendMessage();
+            }
+        });
+
+        // "새로고침" 버튼에 이벤트 리스너 추가
+        document.getElementById('refreshConnectedUsers').addEventListener('click', function () { // 추가된 이벤트 리스너
+            fetchConnectedUsers();
+        });
+
+        const calendarEl = document.getElementById('calendar');
+        calendar = new FullCalendar.Calendar(calendarEl, {
+            height: '500px',
+            expandRows: true,
+            slotMinTime: '08:00',
+            slotMaxTime: '20:00',
+            customButtons: {
+                myCustomButton: {
+                    text: "일정 추가",
+                    click: function () {
+                        $("#exampleModal").modal('show');
+                    }
+                },
+                myfriendButton: {
+                    text: "접속 친구",
+                    click: function() {
+                        fetchConnectedUsers(); // myfriendButton 클릭 시 접속 친구 목록 갱신
+                        $("#connectedUsersModal").modal('show');
+                    }
+                },
+                mylogoutButton: {
+                    text: "로그아웃",
+                    click: function() {
+                        if (confirm('로그아웃 하시겠습니까?')) {
+                            // 로그아웃 요청을 서버로 전송
+                            axios.post('/api/logout', {
+                                username: username
+                            })
+                                .then(response => {
+                                    alert('정상적으로 로그아웃 되셨습니다.');
+                                    window.location.href = 'http://localhost:8081/api/login+';
+                                })
+                                .catch(error => {
+                                    console.error('로그아웃 중 오류가 발생했습니다:', error);
+                                    alert('로그아웃 중 오류가 발생했습니다.');
+                                });
+                        }
+                    }
+                }
+            },
+            headerToolbar: {
+                left: 'prev,next today,myCustomButton,myfriendButton,mylogoutButton',
+                center: 'title',
+                right: 'dayGridMonth,timeGridWeek,timeGridDay,listWeek'
+            },
+            initialView: 'dayGridMonth',
+            navLinks: true,
+            editable: true,
+            selectable: true,
+            nowIndicator: true,
+            dayMaxEvents: true,
+            locale: 'ko',
+            events: function(fetchInfo, successCallback, failureCallback) {
+                const username = localStorage.getItem('username') || 'Anonymous';
+                console.log("Fetching schedules for user: ", username);
+                axios.get('/api/schedules', {
+                    params: {
+                        username: username
+                    }
+                })
+                    .then(response => {
+                        console.log("Schedules fetched: ", response.data);
+                        const events = response.data.map(schedule => ({
+                            title: schedule.title,
+                            start: schedule.startTime,
+                            end: schedule.endTime,
+                            color: schedule.color
+                        }));
+                        successCallback(events);
+                    })
+                    .catch(error => {
+                        console.error("Error fetching schedules:", error);
+                        failureCallback(error);
+                    });
+            },
+            eventClick: function(info) {
+                if (confirm("이 일정을 삭제하시겠습니까?")) {
+                    console.log("Deleting event with title: ", info.event.title);
+                    axios.post('/api/deleteSchedule', null, {
+                        params: {
+                            title: info.event.title
+                        }
+                    })
+                        .then(response => {
+                            if (response.data.success) {
+                                info.event.remove();
+                                alert("일정이 삭제되었습니다.");
+                            } else {
+                                alert("일정 삭제 중 오류가 발생했습니다.");
+                            }
+                        })
+                        .catch(error => {
+                            console.error("Error deleting schedule:", error);
+                            alert("일정 삭제 중 오류가 발생했습니다.");
+                        });
+                }
+            }
+        });
+
+        calendar.render();
+
+        document.getElementById('saveChanges').addEventListener('click', function() {
+            var eventData = {
+                title: username + ': ' + document.getElementById('title').value, // title에 유저이름 추가
+                startTime: document.getElementById('start').value,
+                endTime: document.getElementById('end').value,
+                color: document.getElementById('color').value
+            };
+            console.log(eventData.color + eventData.startTime + eventData.endTime);
+
+            if (!eventData.title || !eventData.startTime || !eventData.endTime || !eventData.color) {
+                alert("입력하지 않은 값이 있습니다.");
+                return;
+            }
+
+            if (eventData.startTime > eventData.endTime) {
+                alert("시간을 잘못입력 하셨습니다.");
+                return;
+            }
+
+            // AJAX 요청으로 서버에 데이터 전송
+            $.ajax({
+                type: "POST",
+                url: `/api/saveSchedule?username=${username}`,
+                data: JSON.stringify(eventData),
+                contentType: "application/json",
+                success: function(response) {
+                    alert("일정이 저장되었습니다.");
+                    calendar.addEvent({
+                        title: eventData.title,
+                        start: eventData.startTime,
+                        end: eventData.endTime,
+                        color: eventData.color,
+                        extendedProps: {
+                            username: username
+                        }
+                    });
+                    $("#exampleModal").modal("hide");
+                },
+                error: function(error) {
+                    console.error("Error saving schedule:", error);
+                    alert("일정 저장 중 오류가 발생했습니다.");
+                }
+            });
+        });
+        var usernameDisplay = localStorage.getItem('username');
+        if (usernameDisplay) {
+            $('#username').text('Welcome, ' + usernameDisplay + '!');
+        } else {
+            $('#username').text('No user logged in.');
+        }
+    });
+
+</script>
+</body>
+</html>

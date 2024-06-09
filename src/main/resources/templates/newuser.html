@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Join</title>
+    <style>
+        table {
+            width: 280px;
+            height: 550px;
+            margin: auto;
+        }
+        .email {
+            width: 127px;
+            height: 32px;
+            font-size: 15px;
+            border: 0;
+            border-color: lightgray;
+            border-radius: 15px;
+            outline: none;
+            padding-left: 10px;
+            background-color: rgb(233,233,233);
+        }
+        .text {
+            width: 250px;
+            height: 32px;
+            font-size: 15px;
+            border: 0;
+            border-radius: 15px;
+            outline: none;
+            padding-left: 10px;
+            background-color: rgb(233,233,233);
+        }
+        select {
+            width: 100px;
+            height: 32px;
+            font-size: 15px;
+            border: 1px solid lightgray;
+            border-color: lightgray;
+            border-radius: 15px;
+            outline: none;
+            padding-left: 10px;
+        }
+        .btn {
+            width: 262px;
+            height: 32px;
+            font-size: 15px;
+            border: 0;
+            border-radius: 15px;
+            outline: none;
+            padding-left: 10px;
+            background-color: rgb(164, 199, 255);
+        }
+        .btn:active {
+            width: 262px;
+            height: 32px;
+            font-size: 15px;
+            border: 0;
+            border-radius: 15px;
+            outline: none;
+            padding-left: 10px;
+            background-color: rgb(61, 135, 255);
+        }
+    </style>
+</head>
+<body>
+<form id="joinForm" onsubmit="registerUser(event);"> <!-- onsubmit으로 함수 호출 -->
+    <table>
+        <tr>
+            <td><h2>회원가입</h2></td>
+        </tr>
+        <tr><td>아이디</td></tr>
+        <tr><td><input type="text" class="text" id="identifier" required></td></tr> <!-- id 수정 -->
+        <tr><td>비밀번호</td></tr>
+        <tr><td><input type="password" class="text" id="password" required></td></tr>
+        <tr><td>비밀번호 확인</td></tr>
+        <tr><td><input type="password" class="text" id="confirmPassword" required></td></tr>
+        <tr><td>이름</td></tr>
+        <tr><td><input type="text" class="text" id="userName" required></td></tr>
+        <tr><td>생년월일</td></tr>
+        <tr><td><input type="date" class="text" id="birthday" required></td></tr>
+        <tr><td>이메일</td></tr>
+        <tr>
+            <td>
+                <input type="text" class="email" id="email" required> @ <!-- id 추가 -->
+                <select id="emailDomain" required>
+                    <option>naver.com</option>
+                    <option>gmail.com</option>
+                    <option>daum.net</option>
+                    <option>nate.com</option>
+                </select>
+            </td>
+        </tr>
+        <tr><td><input type="submit" value="가입하기" class="btn"></td></tr>
+        <tr><td><div id="message"></div></td></tr>
+    </table>
+</form>
+
+<script>
+    function registerUser(event) {
+        event.preventDefault(); // 폼 제출을 막음
+
+        const identifier = document.getElementById('identifier').value;
+        const password = document.getElementById('password').value;
+        const userName = document.getElementById('userName').value;
+
+        fetch('/api/register', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ identifier, password, userName })
+        })
+            .then(response => response.json())
+            .then(data => {
+                const messageElement = document.getElementById('message');
+                if (data.success) {
+                    messageElement.textContent = data.message;
+                    messageElement.style.color = 'green';
+                    window.location.href = 'http://localhost:8081/api/login+';
+                } else {
+                    messageElement.textContent = data.message;
+                    messageElement.style.color = 'red';
+                }
+            })
+            .catch(error => console.error('Error:', error));
+    }
+</script>
+</body>
+</html>
